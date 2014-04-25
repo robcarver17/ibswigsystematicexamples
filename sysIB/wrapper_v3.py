@@ -71,7 +71,7 @@ class IBWrapper(EWrapper):
         global pricevalue
         global finished
 
-        pricevalue.append(wap)
+        pricevalue.append(close)
 
 
     def tickString(self, TickerId, field, value):
