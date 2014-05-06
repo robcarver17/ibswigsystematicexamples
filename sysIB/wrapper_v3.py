@@ -65,7 +65,7 @@ class IBWrapper(EWrapper):
         """
         Note we don't use all the information here
         
-        Just append close prices. Could be wap
+        Just append close prices. 
         """
     
         global pricevalue
@@ -230,6 +230,7 @@ class IBclient(object):
         self.tws.cancelMktData(MEANINGLESS_ID)
         
         ## marketdata should now contain some interesting information
+        ## Note in this implementation we overwrite the contents with each tick; we could keep them
         
         if iserror:
             raise Exception("Problem getting market data")

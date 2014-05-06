@@ -39,6 +39,29 @@ class autodf(object):
         else:
             return pd.DataFrame(self.storage)
         
+def bs_resolve(x):
+    if x<0:
+        return 'SELL'
+    if x>0:
+        return 'BUY'
+    if x==0:
+        raise Exception("trying to trade with zero")
+        
+def action_ib_fill(execlist):
+    """
+    Get fills 
+    
+    Note that fills are cumulative, eg for an order of +10 first fill would be +3, then +9, then +10
+    implying we got 3,6,1 lots in consecutive fills
+    
+    The price of each fill then is the average price for the order so far 
+    """
+    
+    print "recived fill as follows:"
+    print ""
+    print execlist
+    print ""
+        
 if __name__=="__main__":
 
     ans=autodf("datetime", "price", "volume")
