@@ -38,5 +38,10 @@ if __name__=="__main__":
 
     accountinfo=client.get_IB_account_data()
 
-    print positions
+    print "\n Positions and FX"
+    print positions[0]
+    print "\n FX"
+    print positions[1]
+
+    print "\n account info"
     print accountinfo
