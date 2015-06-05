@@ -8,6 +8,7 @@ from sysIB.IButils import bs_resolve, action_ib_fill
 MAX_WAIT_SECONDS=10
 MEANINGLESS_NUMBER=1830
 
+
 def return_IB_connection_info():
     """
     Returns the tuple host, port, clientID required by eConnect
@@ -115,6 +116,7 @@ class IBWrapper(EWrapper):
         Add a row to the portfolio structure
         """
 
+        global portfolio_structure
                 
         portfolio_structure.append((contract.symbol, contract.expiry, position, marketPrice, marketValue, averageCost, 
                                     unrealizedPNL, realizedPNL, accountName, contract.currency))
@@ -123,6 +125,8 @@ class IBWrapper(EWrapper):
         """
         Populates account value dictionary
         """
+        global account_value
+        
         account_value.append((key, value, currency, accountName))
         
 
@@ -206,6 +210,8 @@ class IBclient(object):
         global finished
         global iserror
         global account_value
+        global portfolio_structure
+
 
         finished=False
         iserror=False
