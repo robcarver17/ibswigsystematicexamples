@@ -134,7 +134,7 @@ class IBWrapper(EWrapper):
         """
         Finished can look at portfolio_structure and account_value
         """
-
+        global finished
         finished=True
 
     def updateAccountTime(self, timeStamp):
