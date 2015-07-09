@@ -167,23 +167,6 @@ class IBWrapper(EWrapper):
         setattr(self, "flag_finished_portfolio", True)
 
 
-    ### positions
-    def init_position_data(self):
-        if "data_positions" not in dir(self):
-            setattr(self, "data_positions", [])
-        
-        setattr(self, "flag_finished_positions", False)
-    
-    def position(self, account, contract, position):
-        position_list=self.data_positions
-        
-        position_list.append((contract.symbol, contract.expiry, account, int(position)))
-
-    def positionEnd(self):
-        setattr(self, "flag_finished_positions", True)
-
-        pass
-    
     
 class IBclient(object):
     """
@@ -291,36 +274,3 @@ class IBclient(object):
 
         return (account_value, portfolio_data)
 
-    def get_IB_positions(self):
-
-        """
-        Returns positions held 
-        
-        This only works with the very latest IB API and so it isn't called by the example code
-        """
-
-
-        self.cb.init_position_data()
-        self.cb.init_error()
-        
-        start_time=time.time()
-        self.tws.reqPositions()
-
-        finished=False
-        iserror=False
-        
-        while not finished and not iserror:
-            iserror=self.cb.flag_iserror
-            finished=self.cb.flag_finished_positions
-
-            if (time.time() - start_time) > MAX_WAIT_SECONDS:
-                finished=True
-                print "Didn't get an end for position update, might be missing stuff"
-            pass
-        self.tws.cancelPositions()
-
-        positiondata=self.cb.data_positions
-        
-        return positiondata
-    
-        

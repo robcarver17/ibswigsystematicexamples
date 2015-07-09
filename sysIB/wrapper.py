@@ -26,6 +26,10 @@ class IBWrapper(EWrapper):
 
     """
 
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
+
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
@@ -49,18 +53,17 @@ class IBWrapper(EWrapper):
             setattr(self, "error_msg", True)
            
         ## Wrapper functions don't have to return anything
+
+    ## time handling
+    def init_time(self):
+        setattr(self, "data_the_time_now_is", None)
        
+    
     def currentTime(self, time_from_server):
 
         setattr(self, "data_the_time_now_is", time_from_server)
 
-    def init_time(self):
-        setattr(self, "data_the_time_now_is", None)
-
-    def init_error(self):
-        setattr(self, "flag_iserror", False)
-        setattr(self, "error_msg", "")
-       
+    ### stuff we don't use
     def nextValidId(self, orderId):
         pass
    
@@ -77,7 +80,7 @@ class IBclient(object):
         self.cb=callback
 
     def speaking_clock(self):
-        print "Getting the time... New version"
+        print "Getting the time... "
         
         self.tws.reqCurrentTime()
         

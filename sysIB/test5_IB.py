@@ -34,8 +34,10 @@ if __name__=="__main__":
 
     ## Once you have the portfolio positions then you can use these expiries to map back
 
-    accountinfo=client.get_IB_account_data()
+    (account_value, portfolio_data)=client.get_IB_account_data()
 
+    print "Portfolio"
+    print portfolio_data
+    
     print "\n account info"
-    print accountinfo[0]
-    print accountinfo[1]
+    print account_value

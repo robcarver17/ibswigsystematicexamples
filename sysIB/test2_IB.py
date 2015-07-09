@@ -1,11 +1,10 @@
 from sysIB.wrapper_v2 import IBWrapper, IBclient
 from swigibpy import Contract as IBcontract
-from matplotlib.pyplot import show
  
 if __name__=="__main__":
 
     """
-    This simple example returns the time 
+    This simple example returns historical data 
     """
 
     callback = IBWrapper()
@@ -18,6 +17,5 @@ if __name__=="__main__":
     ibcontract.exchange="GLOBEX"
 
     ans=client.get_IB_historical_data(ibcontract)
-    ans.close.plot()
-    show()
+    print ans
      

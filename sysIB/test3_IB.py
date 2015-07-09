@@ -12,13 +12,9 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201809"
+    ibcontract.expiry="201612"
     ibcontract.symbol="GE"
     ibcontract.exchange="GLOBEX"
-
-    ans=client.get_IB_snapshot_prices(ibcontract)
-    print "Real time prices over seconds"
-    print ans
 
     ans=client.get_IB_market_data(ibcontract)
     print "Bid size, Ask size; Bid price; Ask price"

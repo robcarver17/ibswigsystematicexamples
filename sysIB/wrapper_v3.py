@@ -64,28 +64,6 @@ class IBWrapper(EWrapper):
 
 
         
-    def init_bardata(self, reqId):
-        if "data_bardata" not in dir(self):
-            bardict=dict()
-        else:
-            bardict=self.data_bardata
-            
-        bardict[reqId]=[]
-        
-        setattr(self, "data_bardata", bardict)
-       
-    
-    def realtimeBar(self, reqId, time, open, high, low, close, volume, wap, count):
-
-        """
-        Note we don't use all the information here
-        
-        Just append close prices. 
-        """
-    
-        bardata=self.data_bardata[reqId]
-        bardata.append(close)
-
 
     def init_tickdata(self, TickerId):
         if "data_tickdata" not in dir(self):
@@ -223,7 +201,7 @@ class IBclient(object):
         
     def get_IB_market_data(self, ibcontract, seconds=30, tickerid=MEANINGLESS_ID):
         """
-        Returns more granular market data
+        Returns granular market data
         
         Returns a tuple (bid price, bid size, ask price, ask size)
         
@@ -267,51 +245,3 @@ class IBclient(object):
     
     
     
-    def get_IB_snapshot_prices(self, ibcontract, reqId=MEANINGLESS_ID):
-        
-        """
-        Returns a list of snapshotted prices, averaged over 'real time bars'
-        
-        tws is a result of calling IBConnector()
-        
-        """
-        
-        tws=self.tws
-        
-        ## initialise the tuple
-        self.cb.init_bardata(reqId)
-        self.cb.init_error()
-    
-        # Request current price in 5 second increments
-        # It turns out this is the only way to do it (can't get any other increments)
-        tws.reqRealTimeBars(
-                reqId,                                          # tickerId,
-                ibcontract,                                   # contract,
-                5, 
-                "MIDPOINT",
-                0)
-    
-    
-        start_time=time.time()
-        ## get about 16 seconds worth of samples
-        ## could obviously just stop at N bars as well eg. while len(pricevalue)<N:
-
-        iserror=False
-        finished=False
-        
-        while not finished and not iserror:
-            iserror=self.cb.flag_iserror
-            if (time.time() - start_time) > 20: ## get ~4 samples over 15 seconds
-                finished=True
-            pass
-        
-        ## Cancel the stream
-        tws.cancelRealTimeBars(reqId)
-
-        pricevalue=self.cb.data_bardata[reqId]
-
-        if len(pricevalue)==0 or iserror:
-            print "Error: "+self.cb.error_msg
-            print "Failed to get any prices with snapshot"
-        
-        return pricevalue
