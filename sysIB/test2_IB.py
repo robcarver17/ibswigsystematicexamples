@@ -13,9 +13,9 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201406"
-    ibcontract.symbol="Z"
-    ibcontract.exchange="LIFFE"
+    ibcontract.expiry="201809"
+    ibcontract.symbol="GE"
+    ibcontract.exchange="GLOBEX"
 
     ans=client.get_IB_historical_data(ibcontract)
     ans.close.plot()

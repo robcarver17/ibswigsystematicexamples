@@ -20,7 +20,7 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201406"
+    ibcontract.expiry="201509"
     ibcontract.symbol="GBL"
     ibcontract.exchange="DTB"
 
@@ -34,14 +34,8 @@ if __name__=="__main__":
 
     ## Once you have the portfolio positions then you can use these expiries to map back
 
-    positions=client.get_IB_positions()
-
     accountinfo=client.get_IB_account_data()
 
-    print "\n Positions"
-    print positions[0]
-    print "\n FX"
-    print positions[1]
-
     print "\n account info"
-    print accountinfo
+    print accountinfo[0]
+    print accountinfo[1]

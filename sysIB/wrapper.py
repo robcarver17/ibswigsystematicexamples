@@ -38,27 +38,28 @@ class IBWrapper(EWrapper):
             162 no trades
 
         """
-        global iserror
-        global finished
 
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
        
         if errorCode in ERRORS_TO_TRIGGER:
-            iserror=True
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
-            finished=True  
+            setattr(self, "flag_iserror", True)
+            setattr(self, "error_msg", True)
            
-        ## Wrapper functions don't have to return anything this is to tidy
-        return 0
+        ## Wrapper functions don't have to return anything
        
     def currentTime(self, time_from_server):
-        global the_time_now_is
-        global finished
-       
-        the_time_now_is=time_from_server
-        finished=True
+
+        setattr(self, "data_the_time_now_is", time_from_server)
+
+    def init_time(self):
+        setattr(self, "data_the_time_now_is", None)
+
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
        
     def nextValidId(self, orderId):
         pass
@@ -73,29 +74,34 @@ class IBclient(object):
         tws.eConnect(host, port, clientid)
 
         self.tws=tws
+        self.cb=callback
 
     def speaking_clock(self):
-        global the_time_now_is
-        global finished
-        global iserror
-        
-        print "Getting the time..."
+        print "Getting the time... New version"
         
         self.tws.reqCurrentTime()
         
         start_time=time.time()
-        finished=False
+        
+        self.cb.init_error()
+        self.cb.init_time()
+
         iserror=False
-        
-        the_time_now_is="didnt get time"
-        
-        while not finished:
+        not_finished=True
+
+        while not_finished and not iserror:
+            not_finished=self.cb.data_the_time_now_is is None
+            iserror=self.cb.flag_iserror
+
             if (time.time() - start_time) > MAX_WAIT:
-                finished=True
-            pass
+                not_finished=False
+                
+            if iserror:
+                not_finished=False
     
         if iserror:
             print "Error happened"
+            print self.cb.error_msg
             
-        return the_time_now_is
+        return self.cb.data_the_time_now_is
 

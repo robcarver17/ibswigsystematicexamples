@@ -49,7 +49,7 @@ def bs_resolve(x):
         
 def action_ib_fill(execlist):
     """
-    Get fills 
+    Get fills (eithier ones that have just happened, or when asking for orders)
     
     Note that fills are cumulative, eg for an order of +10 first fill would be +3, then +9, then +10
     implying we got 3,6,1 lots in consecutive fills
@@ -62,11 +62,3 @@ def action_ib_fill(execlist):
     print execlist
     print ""
         
-if __name__=="__main__":
-
-    ans=autodf("datetime", "price", "volume")
-    ans.add_row(datetime=pd.datetime(1985,12,1), price=25.9, volume=30)
-    ans.add_row(datetime=pd.datetime(1985,12,2), price=25.9)
-    ans.add_row(datetime=pd.datetime(1985,12,3), volume=40)
-    print ans.to_pandas("datetime")
-    

@@ -26,6 +26,19 @@ class IBWrapper(EWrapper):
 
     """
 
+    ## We need these but don't use them
+    def nextValidId(self, orderId):
+        pass
+   
+    def managedAccounts(self, openOrderEnd):
+        pass
+
+    ## error handling
+
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
+
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
@@ -38,27 +51,29 @@ class IBWrapper(EWrapper):
             162 no trades
 
         """
-        global iserror
-        global finished
-
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
        
         if errorCode in ERRORS_TO_TRIGGER:
-            iserror=True
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
-            finished=True  
+            setattr(self, "flag_iserror", True)
+            setattr(self, "error_msg", True)
            
-        ## Wrapper functions don't have to return anything this is to tidy
-        return 0
-       
-    def nextValidId(self, orderId):
-        pass
-   
-    def managedAccounts(self, openOrderEnd):
-        pass
+        ## Wrapper functions don't have to return anything
 
+
+        
+    def init_bardata(self, reqId):
+        if "data_bardata" not in dir(self):
+            bardict=dict()
+        else:
+            bardict=self.data_bardata
+            
+        bardict[reqId]=[]
+        
+        setattr(self, "data_bardata", bardict)
+       
     
     def realtimeBar(self, reqId, time, open, high, low, close, volume, wap, count):
 
@@ -68,14 +83,22 @@ class IBWrapper(EWrapper):
         Just append close prices. 
         """
     
-        global pricevalue
-        global finished
+        bardata=self.data_bardata[reqId]
+        bardata.append(close)
 
-        pricevalue.append(close)
+
+    def init_tickdata(self, TickerId):
+        if "data_tickdata" not in dir(self):
+            tickdict=dict()
+        else:
+            tickdict=self.data_tickdata
+
+        tickdict[TickerId]=[np.nan]*4
+        setattr(self, "data_tickdata", tickdict)
 
 
     def tickString(self, TickerId, field, value):
-        global marketdata
+        marketdata=self.data_tickdata[TickerId]
 
         ## update string ticks
 
@@ -98,7 +121,7 @@ class IBWrapper(EWrapper):
 
 
     def tickGeneric(self, TickerId, tickType, value):
-        global marketdata
+        marketdata=self.data_tickdata[TickerId]
 
         ## update generic ticks
 
@@ -123,7 +146,7 @@ class IBWrapper(EWrapper):
         
         ## update ticks of the form new size
         
-        global marketdata
+        marketdata=self.data_tickdata[TickerId]
 
         
         if int(tickType)==0:
@@ -138,7 +161,7 @@ class IBWrapper(EWrapper):
     def tickPrice(self, TickerId, tickType, price, canAutoExecute):
         ## update ticks of the form new price
         
-        global marketdata
+        marketdata=self.data_tickdata[TickerId]
         
         if int(tickType)==1:
             ## bid
@@ -162,7 +185,8 @@ class IBWrapper(EWrapper):
 
         
     def tickSnapshotEnd(self, tickerId):
-        finished=True
+        
+        print "No longer want to get %d" % tickerId
 
 
 
@@ -193,10 +217,11 @@ class IBclient(object):
         tws.eConnect(host, port, clientid)
 
         self.tws=tws
+        self.cb=callback
 
 
         
-    def get_IB_market_data(self, ibcontract, seconds=30):
+    def get_IB_market_data(self, ibcontract, seconds=30, tickerid=MEANINGLESS_ID):
         """
         Returns more granular market data
         
@@ -204,42 +229,45 @@ class IBclient(object):
         
         """
         
-        global marketdata
-        global finished
-        global iserror
-    
-    
-        finished=False
-        iserror=False
         
         ## initialise the tuple
-        marketdata=[np.nan, np.nan, np.nan, np.nan]
+        self.cb.init_tickdata(tickerid)
+        self.cb.init_error()
             
         # Request a market data stream 
         self.tws.reqMktData(
-                MEANINGLESS_ID,
+                tickerid,
                 ibcontract,
                 "",
                 False)       
         
         start_time=time.time()
-        while not finished:
+
+        finished=False
+        iserror=False
+
+        
+        while not finished and not iserror:
+            iserror=self.cb.flag_iserror
             if (time.time() - start_time) > seconds:
                 finished=True
             pass
-        self.tws.cancelMktData(MEANINGLESS_ID)
+        self.tws.cancelMktData(tickerid)
         
+        marketdata=self.cb.data_tickdata[tickerid]
         ## marketdata should now contain some interesting information
         ## Note in this implementation we overwrite the contents with each tick; we could keep them
         
+        
         if iserror:
-            raise Exception("Problem getting market data")
+            print "Error: "+self.cb.error_msg
+            print "Failed to get any prices with marketdata"
         
         return marketdata
     
     
     
-    def get_IB_snapshot_prices(self, ibcontract):
+    def get_IB_snapshot_prices(self, ibcontract, reqId=MEANINGLESS_ID):
         
         """
         Returns a list of snapshotted prices, averaged over 'real time bars'
@@ -250,20 +278,14 @@ class IBclient(object):
         
         tws=self.tws
         
-        global finished
-        global iserror
-        global pricevalue
+        ## initialise the tuple
+        self.cb.init_bardata(reqId)
+        self.cb.init_error()
     
-    
-        iserror=False
-        
-        finished=False
-        pricevalue=[]
-            
         # Request current price in 5 second increments
         # It turns out this is the only way to do it (can't get any other increments)
         tws.reqRealTimeBars(
-                MEANINGLESS_ID,                                          # tickerId,
+                reqId,                                          # tickerId,
                 ibcontract,                                   # contract,
                 5, 
                 "MIDPOINT",
@@ -273,19 +295,23 @@ class IBclient(object):
         start_time=time.time()
         ## get about 16 seconds worth of samples
         ## could obviously just stop at N bars as well eg. while len(pricevalue)<N:
+
+        iserror=False
+        finished=False
         
-        while not finished:
-            if iserror:
-                finished=True
+        while not finished and not iserror:
+            iserror=self.cb.flag_iserror
             if (time.time() - start_time) > 20: ## get ~4 samples over 15 seconds
                 finished=True
             pass
         
         ## Cancel the stream
-        tws.cancelRealTimeBars(MEANINGLESS_ID)
+        tws.cancelRealTimeBars(reqId)
+
+        pricevalue=self.cb.data_bardata[reqId]
 
         if len(pricevalue)==0 or iserror:
-            raise Exception("Failed to get price")
-
+            print "Error: "+self.cb.error_msg
+            print "Failed to get any prices with snapshot"
         
         return pricevalue

@@ -12,9 +12,9 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201406"
-    ibcontract.symbol="GBL"
-    ibcontract.exchange="DTB"
+    ibcontract.expiry="201809"
+    ibcontract.symbol="GE"
+    ibcontract.exchange="GLOBEX"
 
     ans=client.get_IB_snapshot_prices(ibcontract)
     print "Real time prices over seconds"

@@ -8,6 +8,9 @@ from sysIB.IButils import bs_resolve, action_ib_fill
 MAX_WAIT_SECONDS=10
 MEANINGLESS_NUMBER=1729
 
+## This is the reqId IB API sends when a fill is received
+FILL_CODE=-1
+
 def return_IB_connection_info():
     """
     Returns the tuple host, port, clientID required by eConnect
@@ -28,6 +31,10 @@ class IBWrapper(EWrapper):
 
     """
 
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
+
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
@@ -40,20 +47,16 @@ class IBWrapper(EWrapper):
             162 no trades
 
         """
-        global iserror
-        global finished
-
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
        
         if errorCode in ERRORS_TO_TRIGGER:
-            iserror=True
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
-            finished=True  
+            setattr(self, "flag_iserror", True)
+            setattr(self, "error_msg", True)
            
-        ## Wrapper functions don't have to return anything this is to tidy
-        return 0
+        ## Wrapper functions don't have to return anything
        
     """
     Following methods will be called, but we don't use them
@@ -70,26 +73,48 @@ class IBWrapper(EWrapper):
         pass
 
 
+
+    """
+    get stuff
+    """
+
+    def init_fill_data(self):
+        setattr(self, "data_fill_data", {})
+        setattr(self, "flag_fill_data_finished", False)
+
+    def add_fill_data(self, reqId, execdetails):
+        if "data_fill_data" not in dir(self):
+            filldata={}
+        else:
+            filldata=self.data_fill_data
+
+        if reqId not in filldata.keys():
+            filldata[reqId]={}
+            
+        execid=execdetails['orderid']
+        filldata[reqId][execid]=execdetails
+                        
+        setattr(self, "data_fill_data", filldata)
+
+
     def execDetails(self, reqId, contract, execution):
     
         """
         This is called if 
         
-        a) we have submitted an order and a fill has come back (in which case getting_executions is False)
-        b) We have asked for recent fills to be given to us (in which case it is True)
+        a) we have submitted an order and a fill has come back
+        b) We have asked for recent fills to be given to us 
         
-        In case (a) we call action_ib_fill with the fill details; and for case (b) we add the fill to a list 
+        We populate the filldata object and also call action_ib_fill in case we need to do something with the 
+          fill data 
         
         See API docs, C++, SocketClient Properties, Contract and Execution for more details 
         """
-        
-        global execlist
-        global getting_executions    
-            
+        reqId=int(reqId)
         
         execid=execution.execId
         exectime=execution.time
-        thisorderid=execution.orderId
+        thisorderid=int(execution.orderId)
         account=execution.acctNumber
         exchange=execution.exchange
         permid=execution.permId
@@ -102,21 +127,38 @@ class IBWrapper(EWrapper):
         
         execdetails=dict(side=str(side), times=str(exectime), orderid=str(thisorderid), qty=int(cumQty), price=float(avgprice), symbol=str(symbol), expiry=str(expiry), clientid=str(clientid), execid=str(execid), account=str(account), exchange=str(exchange), permid=int(permid))
 
-        if getting_executions:        
-            execlist.append(execdetails)
-        else:
-            ## one off fill
+        if reqId==FILL_CODE:
+            ## This is a fill from a trade we've just done
             action_ib_fill(execdetails)
+            
+        else:
+            ## This is just execution data we've asked for
+            self.add_fill_data(reqId, execdetails)
+
             
     def execDetailsEnd(self, reqId):
         """
         No more orders to look at if execution details requested
         """
-        
-        global finished
-        finished=True
+
+        setattr(self, "flag_fill_data_finished", True)
             
-        
+
+    def init_openorders(self):
+        setattr(self, "data_order_structure", {})
+        setattr(self, "flag_order_structure_finished", False)
+
+    def add_order_data(self, orderdetails):
+        if "data_order_structure" not in dir(self):
+            orderdata={}
+        else:
+            orderdata=self.data_order_structure
+
+        orderid=orderdetails['orderid']
+        orderdata[orderid]=orderdetails
+                        
+        setattr(self, "data_order_structure", orderdata)
+
 
     def openOrder(self, orderID, contract, order, orderState):
         """
@@ -127,13 +169,22 @@ class IBWrapper(EWrapper):
         
         """
         
-        global order_structure
-
         ## Get a selection of interesting things about the order
-        orderdict=dict(symbol=contract.symbol , expiry=contract.expiry,  qty=int(order.totalQuantity) , 
-                       side=order.action , orderid=orderID, clientid=order.clientId ) 
+        orderdetails=dict(symbol=contract.symbol , expiry=contract.expiry,  qty=int(order.totalQuantity) , 
+                       side=order.action , orderid=int(orderID), clientid=order.clientId ) 
         
-        order_structure.append(orderdict)
+        self.add_order_data(orderdetails)
+
+    def openOrderEnd(self):
+        """
+        Finished getting open orders
+        """
+        setattr(self, "flag_order_structure_finished", True)
+
+
+    def init_nextvalidid(self):
+        setattr(self, "data_brokerorderid", None)
+
 
     def nextValidId(self, orderId):
         """
@@ -142,24 +193,19 @@ class IBWrapper(EWrapper):
         Note this doesn't 'burn' the ID; if you call again without executing the next ID will be the same
         """
         
-        global brokerorderid
-        global finished
-        brokerorderid=orderId
+        self.data_brokerorderid=orderId
 
-    def openOrderEnd(self):
-        """
-        Finished getting open orders
-        """
-        global finished
-        finished=True
 
-    def contractDetailsEnd(self, reqId):
-        """
-        Finished getting contract details
-        """
+    def init_contractdetails(self, reqId):
+        if "data_contractdetails" not in dir(self):
+            dict_contractdetails=dict()
+        else:
+            dict_contractdetails=self.data_contractdetails
         
-        global finished
-        finished=True
+        dict_contractdetails[reqId]={}
+        setattr(self, "flag_finished_contractdetails", False)
+        setattr(self, "data_contractdetails", dict_contractdetails)
+        
 
     def contractDetails(self, reqId, contractDetails):
         """
@@ -168,9 +214,8 @@ class IBWrapper(EWrapper):
         If you submit more than one request watch out to match up with reqId
         """
         
-        global contract_details
+        contract_details=self.data_contractdetails[reqId]
 
-        contract_details={}
         contract_details["contractMonth"]=contractDetails.contractMonth
         contract_details["liquidHours"]=contractDetails.liquidHours
         contract_details["longName"]=contractDetails.longName
@@ -190,6 +235,12 @@ class IBWrapper(EWrapper):
         contract_details["secType"]=contract2.secType
         contract_details["currency"]=contract2.currency
 
+    def contractDetailsEnd(self, reqId):
+        """
+        Finished getting contract details
+        """
+        
+        setattr(self, "flag_finished_contractdetails", True)
 
 
 
@@ -219,10 +270,11 @@ class IBclient(object):
         tws.eConnect(host, port, clientid)
 
         self.tws=tws
+        self.cb=callback
 
 
     
-    def get_contract_details(self, ibcontract):
+    def get_contract_details(self, ibcontract, reqId=MEANINGLESS_NUMBER):
     
         """
         Returns a dictionary of contract_details
@@ -230,29 +282,33 @@ class IBclient(object):
         
         """
         
-        global finished
-        global iserror
-        global contract_details
+        self.cb.init_contractdetails(reqId)
+        self.cb.init_error()
     
-        finished=False
-        iserror=False
-        contract_details={}
-        
         self.tws.reqContractDetails(
-            MEANINGLESS_NUMBER,                                         # reqId,
+            reqId,                                         # reqId,
             ibcontract,                                   # contract,
         )
     
+
+        finished=False
+        iserror=False
         
         start_time=time.time()
-        while not finished:
+        while not finished and not iserror:
+            finished=self.cb.flag_finished_contractdetails
+            iserror=self.cb.flag_iserror
+            
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
                 iserror=True
             pass
     
+        contract_details=self.cb.data_contractdetails[reqId]
         if iserror or contract_details=={}:
-            raise Exception("Problem getting details")
+            print self.cb.error_msg
+            print "Problem getting details"
+            return None
     
         return contract_details
 
@@ -263,29 +319,32 @@ class IBclient(object):
         Get the next brokerorderid
         """
 
-        global finished
-        global brokerorderid
-        global iserror
+
+        self.cb.init_error()
+        self.cb.init_nextvalidid()
         
-        finished=False
-        brokerorderid=None
-        iserror=False
 
         start_time=time.time()
         
         ## Note for more than one ID change '1'
         self.tws.reqIds(1)
-        while not finished:
+
+        finished=False
+        iserror=False
+
+        while not finished and not iserror:
+            brokerorderid=self.cb.data_brokerorderid
+            finished=brokerorderid is not None
+            iserror=self.cb.flag_iserror
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
-            if brokerorderid is not None:
-                finished=True
-                
             pass
+
         
         if brokerorderid is None or iserror:
-            
-            raise Exception("Problem getting next broker orderid")
+            print self.cb.error_msg
+            print "Problem getting next broker orderid"
+            return None
         
         return brokerorderid
 
@@ -298,12 +357,6 @@ class IBclient(object):
     
         raises exception if fails
         """
-        global iserror
-        global brokerorderid
-        global finished
-        global getting_executions
-        global order_structure
-        
         iborder = IBOrder()
         iborder.action = bs_resolve(trade)
         iborder.lmtPrice = lmtPrice
@@ -312,16 +365,11 @@ class IBclient(object):
         iborder.tif='DAY'
         iborder.transmit=True
 
-        
-        getting_executions=False
-        order_structure=[]
-
         ## We can eithier supply our own ID or ask IB to give us the next valid one
         if orderid is None:
             print "Getting orderid from IB"
             orderid=self.get_next_brokerorderid()
             
-        
         print "Using order id of %d" % orderid
     
          # Place the order
@@ -346,68 +394,63 @@ class IBclient(object):
         """
         
         
-        global finished
-        global iserror
-        global order_structure
-        
-        iserror=False
-        finished=False
-        order_structure=[]
-        
+        self.cb.init_openorders()
+        self.cb.init_error()
+                
         start_time=time.time()
         self.tws.reqAllOpenOrders()
+        iserror=False
+        finished=False
         
-        while not finished:
+        while not finished and not iserror:
+            finished=self.cb.flag_order_structure_finished
+            iserror=self.cb.flag_iserror
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 ## You should have thought that IB would teldl you we had finished
                 finished=True
             pass
         
+        order_structure=self.cb.data_order_structure
         if iserror:
-            raise Exception("Problem getting open orders")
+            print self.cb.error_msg
+            print "Problem getting open orders"
     
         return order_structure    
     
 
 
-    def get_executions(self):
+    def get_executions(self, reqId=MEANINGLESS_NUMBER):
         """
         Returns a list of all executions done today
         """
-        
-        
-        global finished
-        global iserror
-        global execlist
-        global getting_executions
-        
-        iserror=False
-        finished=False
-        execlist=[]
-        
-        ## Tells the wrapper we are getting executions, not expecting fills
-        ## Note that if you try and get executions when fills should be coming will be confusing!
-        ## BE very careful with fills code
-        
-        getting_executions=True
-        
-        start_time=time.time()
+        assert type(reqId) is int
+        if reqId==FILL_CODE:
+            raise Exception("Can't call get_executions with a reqId of %d as this is reserved for fills %d" % reqId)
+
+        self.cb.init_fill_data()
+        self.cb.init_error()
         
         ## We can change ExecutionFilter to subset different orders
         
-        self.tws.reqExecutions(MEANINGLESS_NUMBER, ExecutionFilter())
+        self.tws.reqExecutions(reqId, ExecutionFilter())
+
+        iserror=False
+        finished=False
         
-        while not finished:
+        start_time=time.time()
+        
+        while not finished and not iserror:
+            finished=self.cb.flag_fill_data_finished
+            iserror=self.cb.flag_iserror
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
-                iserror=True
             pass
     
-        ## Change this flag back so that the process gets fills properly
-        getting_executions=False
-        
         if iserror:
-            raise Exception("Problem getting executions")
+            print self.cb.error_msg
+            print "Problem getting executions"
+        
+        execlist=self.cb.data_fill_data[reqId]
         
         return execlist
         

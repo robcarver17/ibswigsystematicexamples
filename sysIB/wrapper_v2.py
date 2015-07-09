@@ -6,6 +6,10 @@ from swigibpy import EPosixClientSocket
 
 from sysIB.IButils import autodf
 
+MEANINGLESS_NUMBER=999
+
+EMPTY_HDATA=autodf("date", "open", "high", "low", "close", "volume")
+
 ### how many seconds before we give up
 MAX_WAIT=30
 
@@ -30,6 +34,9 @@ class IBWrapper(EWrapper):
 
     """
 
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
@@ -42,27 +49,20 @@ class IBWrapper(EWrapper):
             162 no trades
 
         """
-        global iserror
-        global finished
 
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
        
         if errorCode in ERRORS_TO_TRIGGER:
-            iserror=True
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
-            finished=True  
+            setattr(self, "flag_iserror", True)
+            setattr(self, "error_msg", True)
            
-        ## Wrapper functions don't have to return anything this is to tidy
-        return 0
+        ## Wrapper functions don't have to return anything
        
-    def currentTime(self, time_from_server):
-        global the_time_now_is
-        global finished
-       
-        the_time_now_is=time_from_server
-        finished=True
+
+    ## The following are not used
        
     def nextValidId(self, orderId):
         pass
@@ -70,22 +70,27 @@ class IBWrapper(EWrapper):
     def managedAccounts(self, openOrderEnd):
         pass
 
+    def init_historicprices(self, tickerid):
+        if "data_historicdata" not in dir(self):
+            histdict=dict()
+        else:
+            histdict=self.data_historicdata
+        
+        histdict[tickerid]=EMPTY_HDATA
+        setattr(self, "data_historicdata", histdict)
+        setattr(self, "flag_historicdata_finished", False)
 
     def historicalData(self, reqId, date, openprice, high,
                        low, close, volume,
                        barCount, WAP, hasGaps):
         
-        global historicdata
-        global finished
 
         if date[:8] == 'finished':
-            finished=True
+            setattr(self, "flag_historicdata_finished", True)
         else:
-            
+            historicdata=self.data_historicdata[reqId]
             date=datetime.datetime.strptime(date,"%Y%m%d")
             historicdata.add_row(date=date, open=openprice, high=high, low=low, close=close, volume=volume)
-
-
 
 
 class IBclient(object):
@@ -95,39 +100,10 @@ class IBclient(object):
         tws.eConnect(host, port, clientid)
 
         self.tws=tws
-
-    def speaking_clock(self):
-        global the_time_now_is
-        global finished
-        global iserror
-        
-        print "Getting the time..."
-        
-        self.tws.reqCurrentTime()
-        
-        start_time=time.time()
-        finished=False
-        iserror=False
-        
-        the_time_now_is="didnt get time"
-        
-        while not finished:
-            if (time.time() - start_time) > MAX_WAIT:
-                finished=True
-            pass
-    
-        if iserror:
-            print "Error happened"
-            
-        return the_time_now_is
-
+        self.cb=callback
 
     
-    
-    
-    
-    
-    def get_IB_historical_data(self, ibcontract, durationStr="1 Y", barSizeSetting="1 day", tickerid=999):
+    def get_IB_historical_data(self, ibcontract, durationStr="1 Y", barSizeSetting="1 day", tickerid=MEANINGLESS_NUMBER):
         
         """
         Returns historical prices for a contract, up to today
@@ -135,15 +111,11 @@ class IBclient(object):
         tws is a result of calling IBConnector()
         
         """
-        global historicdata
-        global finished
-        global iserror
 
-        finished=False
-        iserror=False
         today=datetime.datetime.now()
-        
-        historicdata=autodf("date", "open", "high", "low", "close", "volume")
+
+        self.cb.init_error()
+        self.cb.init_historicprices(tickerid)
             
         # Request some historical data.
         self.tws.reqHistoricalData(
@@ -158,15 +130,22 @@ class IBclient(object):
             )
         
         start_time=time.time()
-        while not finished:
+        finished=False
+        iserror=False
+        
+        while not finished and not iserror:
+            finished=self.cb.flag_historicdata_finished
+            iserror=self.cb.flag_iserror
+            
             if (time.time() - start_time) > MAX_WAIT:
-                finished=True
                 iserror=True
             pass
-        
+            
         if iserror:
+            print self.cb.error_msg
             raise Exception("Problem getting historic data")
         
+        historicdata=self.cb.data_historicdata[tickerid]
         results=historicdata.to_pandas("date")
         
         return results

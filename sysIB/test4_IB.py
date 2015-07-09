@@ -20,7 +20,7 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201406"
+    ibcontract.expiry="201509"
     ibcontract.symbol="GBL"
     ibcontract.exchange="DTB"
 
@@ -59,8 +59,11 @@ if __name__=="__main__":
     print order_structure
     print ""
     
-    print "Cancelling the limit order"
-    client.tws.cancelOrder(orderid2)
+    print "Cancelling remaining orders"
+    for order_ref in order_structure.keys():
+        order=order_structure[order_ref]
+        print "Cancelling %d" % order['orderid']   
+        client.tws.cancelOrder(order['orderid'])
 
     print "Waiting for cancellation to finish"    
     while client.any_open_orders():

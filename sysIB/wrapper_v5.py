@@ -29,6 +29,10 @@ class IBWrapper(EWrapper):
 
     """
 
+    def init_error(self):
+        setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
+
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
@@ -41,20 +45,16 @@ class IBWrapper(EWrapper):
             162 no trades
 
         """
-        global iserror
-        global finished
-
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
        
         if errorCode in ERRORS_TO_TRIGGER:
-            iserror=True
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
-            finished=True  
+            setattr(self, "flag_iserror", True)
+            setattr(self, "error_msg", True)
            
-        ## Wrapper functions don't have to return anything this is to tidy
-        return 0
+        ## Wrapper functions don't have to return anything
        
     """
     Following methods will be called, but we don't use them
@@ -73,14 +73,21 @@ class IBWrapper(EWrapper):
     def commissionReport(self, blah):
         pass
 
+    def updateAccountTime(self, timeStamp):
+        pass 
+    
+    ## contract details
 
-    def contractDetailsEnd(self, reqId):
-        """
-        Finished getting contract details
-        """
+    def init_contractdetails(self, reqId):
+        if "data_contractdetails" not in dir(self):
+            dict_contractdetails=dict()
+        else:
+            dict_contractdetails=self.data_contractdetails
         
-        global finished
-        finished=True
+        dict_contractdetails[reqId]={}
+        setattr(self, "flag_finished_contractdetails", False)
+        setattr(self, "data_contractdetails", dict_contractdetails)
+        
 
     def contractDetails(self, reqId, contractDetails):
         """
@@ -89,9 +96,8 @@ class IBWrapper(EWrapper):
         If you submit more than one request watch out to match up with reqId
         """
         
-        global contract_details
+        contract_details=self.data_contractdetails[reqId]
 
-        contract_details={}
         contract_details["contractMonth"]=contractDetails.contractMonth
         contract_details["liquidHours"]=contractDetails.liquidHours
         contract_details["longName"]=contractDetails.longName
@@ -111,21 +117,45 @@ class IBWrapper(EWrapper):
         contract_details["secType"]=contract2.secType
         contract_details["currency"]=contract2.currency
 
+    def contractDetailsEnd(self, reqId):
+        """
+        Finished getting contract details
+        """
+        
+        setattr(self, "flag_finished_contractdetails", True)
+
+
+
+
+    ## portfolio
+
+    def init_portfolio_data(self):
+        if "data_portfoliodata" not in dir(self):
+            setattr(self, "data_portfoliodata", [])
+        if "data_accountvalue" not in dir(self):
+            setattr(self, "data_accountvalue", [])
+            
+        
+        setattr(self, "flag_finished_portfolio", False)
+        
+
     def updatePortfolio(self, contract, position, marketPrice, marketValue, averageCost, unrealizedPNL, realizedPNL, accountName):
         """
         Add a row to the portfolio structure
         """
 
-        global portfolio_structure
+        portfolio_structure=self.data_portfoliodata
                 
         portfolio_structure.append((contract.symbol, contract.expiry, position, marketPrice, marketValue, averageCost, 
                                     unrealizedPNL, realizedPNL, accountName, contract.currency))
 
+    ## account value
+    
     def updateAccountValue(self, key, value, currency, accountName):
         """
         Populates account value dictionary
         """
-        global account_value
+        account_value=self.data_accountvalue
         
         account_value.append((key, value, currency, accountName))
         
@@ -134,15 +164,27 @@ class IBWrapper(EWrapper):
         """
         Finished can look at portfolio_structure and account_value
         """
-        global finished
-        finished=True
-
-    def updateAccountTime(self, timeStamp):
-        pass 
+        setattr(self, "flag_finished_portfolio", True)
 
 
+    ### positions
+    def init_position_data(self):
+        if "data_positions" not in dir(self):
+            setattr(self, "data_positions", [])
+        
+        setattr(self, "flag_finished_positions", False)
+    
+    def position(self, account, contract, position):
+        position_list=self.data_positions
+        
+        position_list.append((contract.symbol, contract.expiry, account, int(position)))
 
+    def positionEnd(self):
+        setattr(self, "flag_finished_positions", True)
 
+        pass
+    
+    
 class IBclient(object):
     """
     Client object
@@ -169,10 +211,9 @@ class IBclient(object):
 
         self.tws=tws
         self.accountid=accountid
+        self.cb=callback
 
-
-    
-    def get_contract_details(self, ibcontract):
+    def get_contract_details(self, ibcontract, reqId=MEANINGLESS_NUMBER):
     
         """
         Returns a dictionary of contract_details
@@ -180,96 +221,106 @@ class IBclient(object):
         
         """
         
-        global finished
-        global iserror
-        global contract_details
+        self.cb.init_contractdetails(reqId)
+        self.cb.init_error()
     
-        finished=False
-        iserror=False
-        contract_details={}
-        
         self.tws.reqContractDetails(
-            MEANINGLESS_NUMBER,                                         # reqId,
+            reqId,                                         # reqId,
             ibcontract,                                   # contract,
         )
     
+
+        finished=False
+        iserror=False
         
         start_time=time.time()
-        while not finished:
+        while not finished and not iserror:
+            finished=self.cb.flag_finished_contractdetails
+            iserror=self.cb.flag_iserror
+            
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
                 iserror=True
             pass
     
+        contract_details=self.cb.data_contractdetails[reqId]
         if iserror or contract_details=={}:
-            raise Exception("Problem getting details")
+            print self.cb.error_msg
+            print "Problem getting details"
+            return None
     
         return contract_details
 
+
+    
+
     def get_IB_account_data(self):
-        global finished
-        global iserror
-        global account_value
-        global portfolio_structure
 
-
-        finished=False
-        iserror=False
-        account_value=[]
-
+        self.cb.init_portfolio_data()
+        self.cb.init_error()
+        
         ## Turn on the streaming of accounting information
         self.tws.reqAccountUpdates(True, self.accountid)
+        
         start_time=time.time()
-        while not finished:
+        finished=False
+        iserror=False
+
+        while not finished and not iserror:
+            finished=self.cb.flag_finished_contractdetails
+            iserror=self.cb.flag_iserror
+
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
-                iserror=True
+                print "Didn't get an end for account update, might be missing stuff"
             pass
 
         ## Turn off the streaming
         ## Note portfolio_structure will also be updated
         self.tws.reqAccountUpdates(False, self.accountid)
 
-        if len(account_value)==0 or iserror:
-            msg="No account data recieved"
-            raise Exception(msg)
+        portfolio_data=self.cb.data_portfoliodata
+        account_value=self.cb.data_accountvalue
 
-        return account_value
+        
+        
+        if iserror:
+            print self.cb.error_msg
+            print "Problem getting details"
+            return None
+
+        return (account_value, portfolio_data)
 
     def get_IB_positions(self):
 
         """
-        Returns positions held - a particular kind of accounting information
+        Returns positions held 
+        
+        This only works with the very latest IB API and so it isn't called by the example code
         """
 
 
-        global finished
-        global iserror
-        global portfolio_structure
-        global account_value
+        self.cb.init_position_data()
+        self.cb.init_error()
+        
+        start_time=time.time()
+        self.tws.reqPositions()
 
         finished=False
         iserror=False
-        portfolio_structure=[]
-        account_value=[]
+        
+        while not finished and not iserror:
+            iserror=self.cb.flag_iserror
+            finished=self.cb.flag_finished_positions
 
-        ## Ask to get accounting info, both positions and account details
-        self.tws.reqAccountUpdates(True, self.accountid)
-        start_time=time.time()
-        while not finished:
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
                 finished=True
-                iserror=True
+                print "Didn't get an end for position update, might be missing stuff"
             pass
-        self.tws.reqAccountUpdates(False, self.accountid)
+        self.tws.cancelPositions()
 
-        exchange_rates={}
-
-        ## Create a dictionary of exchange rates
-        for x in account_value:
-            if x[0]=="ExchangeRate":
-                exchange_rates[x[2]]=float(x[1])
-
-        return (portfolio_structure, exchange_rates)
-
+        positiondata=self.cb.data_positions
+        
+        return positiondata
+    
         
