@@ -250,7 +250,7 @@ class IBclient(object):
         iserror=False
 
         while not finished and not iserror:
-            finished=self.cb.flag_finished_contractdetails
+            finished=self.cb.flag_finished_portfolio
             iserror=self.cb.flag_iserror
 
             if (time.time() - start_time) > MAX_WAIT_SECONDS:
