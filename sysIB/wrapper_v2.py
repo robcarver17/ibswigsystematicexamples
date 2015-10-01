@@ -36,6 +36,8 @@ class IBWrapper(EWrapper):
 
     def init_error(self):
         setattr(self, "flag_iserror", False)
+        setattr(self, "error_msg", "")
+
 
     def error(self, id, errorCode, errorString):
         """
