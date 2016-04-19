@@ -8,14 +8,14 @@ MAX_WAIT=30
 def return_IB_connection_info():
     """
     Returns the tuple host, port, clientID required by eConnect
-   
+
     """
-   
+
     host=""
-   
+
     port=4001
     clientid=999
-   
+
     return (host, port, clientid)
 
 class IBWrapper(EWrapper):
@@ -33,7 +33,7 @@ class IBWrapper(EWrapper):
     def error(self, id, errorCode, errorString):
         """
         error handling, simple for now
-       
+
         Here are some typical IB errors
         INFO: 2107, 2106
         WARNING 326 - can't connect as already connected
@@ -45,20 +45,16 @@ class IBWrapper(EWrapper):
 
         ## Any errors not on this list we just treat as information
         ERRORS_TO_TRIGGER=[201, 103, 502, 504, 509, 200, 162, 420, 2105, 1100, 478, 201, 399]
-       
+
         if errorCode in ERRORS_TO_TRIGGER:
             errormsg="IB error id %d errorcode %d string %s" %(id, errorCode, errorString)
             print errormsg
             setattr(self, "flag_iserror", True)
             setattr(self, "error_msg", True)
-           
+
         ## Wrapper functions don't have to return anything
 
-    ## time handling
-    def init_time(self):
-        setattr(self, "data_the_time_now_is", None)
-       
-    
+
     def currentTime(self, time_from_server):
 
         setattr(self, "data_the_time_now_is", time_from_server)
@@ -66,7 +62,7 @@ class IBWrapper(EWrapper):
     ### stuff we don't use
     def nextValidId(self, orderId):
         pass
-   
+
     def managedAccounts(self, openOrderEnd):
         pass
 
@@ -81,30 +77,31 @@ class IBclient(object):
 
     def speaking_clock(self):
         print "Getting the time... "
-        
+
         self.tws.reqCurrentTime()
-        
+
         start_time=time.time()
-        
+
         self.cb.init_error()
-        self.cb.init_time()
 
         iserror=False
-        not_finished=True
 
-        while not_finished and not iserror:
-            not_finished=self.cb.data_the_time_now_is is None
+        while not iserror:
+            isfinished = hasattr(self.cb, 'data_the_time_now_is')
+            if isfinished:
+                break
+
             iserror=self.cb.flag_iserror
 
             if (time.time() - start_time) > MAX_WAIT:
                 not_finished=False
-                
+
             if iserror:
                 not_finished=False
-    
+
         if iserror:
             print "Error happened"
             print self.cb.error_msg
-            
+
         return self.cb.data_the_time_now_is
 
