@@ -20,7 +20,7 @@ if __name__=="__main__":
     
     ibcontract = IBcontract()
     ibcontract.secType = "FUT"
-    ibcontract.expiry="201509"
+    ibcontract.expiry="201703"
     ibcontract.symbol="GBL"
     ibcontract.exchange="DTB"
 

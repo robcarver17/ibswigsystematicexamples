@@ -91,10 +91,10 @@ class IBWrapper(EWrapper):
 
         elif int(tickType)==1:
             ## bid
-            marketdata[0][2]=float(value)
+            marketdata[2]=float(value)
         elif int(tickType)==2:
             ## ask
-            marketdata[0][3]=float(value)
+            marketdata[3]=float(value)
         
 
 
